@@ -3,6 +3,8 @@ package com.sotalvaroo.springreactorlearning;
 import com.sotalvaroo.springreactorlearning.models.Comment;
 import com.sotalvaroo.springreactorlearning.models.User;
 import com.sotalvaroo.springreactorlearning.models.UserComment;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
@@ -14,6 +16,9 @@ import reactor.core.publisher.Mono;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Timer;
+import java.util.TimerTask;
+import java.util.concurrent.CountDownLatch;
 
 @SpringBootApplication
 public class SpringReactorLearningApplication implements CommandLineRunner {
@@ -110,7 +115,10 @@ public class SpringReactorLearningApplication implements CommandLineRunner {
         /*ejemploUsuarioComentariosZipWithForma2();*/
         /*ejemploZipWithRange();*/
         /*ejemploInterval();*/
-        ejemploDelayElements();
+        /*ejemploDelayElements();*/
+        /*ejemploIntervaloInfinito();*/
+        /*ejemploIntervalDesdeCreate();*/
+        ejemploContrapresion();
 
     }
 
@@ -203,6 +211,90 @@ public class SpringReactorLearningApplication implements CommandLineRunner {
 
         rango.subscribe();
         Thread.sleep(13000);
+    }
+
+    public void ejemploIntervaloInfinito() throws InterruptedException {
+
+        CountDownLatch latch = new CountDownLatch(1);
+        Flux.interval(Duration.ofSeconds(1))
+                .doOnTerminate(latch::countDown)
+                .flatMap(i -> {
+                    if (i >= 5) {
+                        return Flux.error(new InterruptedException("Solo hasta 5"));
+                    }
+                    return Flux.just(i);
+                })
+                .map(i -> "Hello " + i)
+                .retry(2)
+                .subscribe(s -> log.info(s), e -> log.error(e.getMessage()));
+
+        latch.await();
+    }
+
+    public void ejemploIntervalDesdeCreate() {
+        Flux.create(emitter -> {
+                    Timer timer = new Timer();
+                    timer.schedule(new TimerTask() {
+
+                        private Integer counter = 0;
+
+                        @Override
+                        public void run() {
+                            emitter.next(++counter);
+                            if (counter == 10) {
+                                timer.cancel();
+                                emitter.complete();
+                            }
+                            if (counter == 5) {
+                                timer.cancel();
+                                emitter.error(new InterruptedException("Error, se ha detenido"));
+                            }
+                        }
+                    }, 1000, 1000);
+                })
+                .subscribe(next -> log.info(next.toString())
+                        , err -> log.error(err.getMessage())
+                        , () -> log.info("Terminado"));
+    }
+
+    public void ejemploContrapresion() {
+        Flux.range(1, 10)
+                .log()
+                .limitRate(5)          //Opcion rápida
+                .subscribe(/*new Subscriber<Integer>() {
+
+                    private Subscription s;
+
+                    private Integer limit = 2;
+                    private Integer consumed = 0;
+
+                    @Override
+                    public void onSubscribe(Subscription subscription) {
+                        this.s = subscription;
+                        s.request(limit);
+
+                    }
+
+                    @Override
+                    public void onNext(Integer integer) {
+                        log.info(integer.toString());
+                        consumed++;
+                        if (consumed == limit){
+                            consumed = 0;
+                            s.request(limit);
+                        }
+                    }
+
+                    @Override
+                    public void onError(Throwable throwable) {
+
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                }*/);   //Opcion lenta
     }
 
 }
